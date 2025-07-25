@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Horarios USM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+        .schedule-grid {
+            display: grid;
+            grid-template-columns: 80px repeat(5, 1fr); /* Ajustado para el ancho de la columna de tiempo */
+            grid-template-rows: auto repeat(14, 60px);
+            border: 1px solid #e0e0e0;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            background-color: #fff;
+            position: relative;
+        }
+        .schedule-header, .time-slot, .course-block {
+            border: 1px solid #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-weight: 600;
+            padding: 0.5rem;
+            box-sizing: border-box;
+        }
+        .schedule-header {
+            background-color: #e9ecef;
+            font-size: 0.875rem;
+            color: #555;
+            height: 60px; /* Altura de las cabeceras de día */
+        }
+        .time-slot {
+            background-color: #f8f9fa;
+            font-size: 0.75rem;
+            color: #777;
+            grid-column: 1; /* Asegura que las horas estén en la primera columna */
+            justify-content: center;
+            align-items: flex-start; /* Alinea el texto de la hora arriba */
+            padding-top: 5px; /* Pequeño padding para el texto */
+        }
+        .course-block {
+            background-color: #d1e7dd; /* Color de fondo por defecto para los bloques de curso */
+            color: #0f5132; /* Color de texto por defecto */
+            border-radius: 0.3rem;
+            margin: 2px;
+            cursor: pointer;
+            position: relative;
+            z-index: 10;
+            font-size: 0.75rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: normal;
+            line-height: 1.2;
+            padding: 5px;
+            align-items: flex-start; /* Alinea el contenido arriba */
+            justify-content: flex-start; /* Alinea el contenido a la izquierda */
+            text-align: left;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            transition: background-color 0.2s ease, transform 0.2s ease;
+        }
+        .course-block:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .course-block.selected {
+            background-color: #ffe066; /* Amarillo para cursos seleccionados */
+            color: #8a6d00;
+            border: 2px solid #ffcc00;
+        }
+        .course-block .course-name, .course-block .course-professor, .course-block .course-sala {
+            display: block;
+        }
+        .course-list {
+            max-height: 600px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 0.5rem;
+            background-color: #fff;
+            padding: 1rem;
+        }
+        .course-item {
+            padding: 0.75rem;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .course-item:last-child {
+            border-bottom: none;
+        }
+        .course-item:hover {
+            background-color: #f9f9f9;
+        }
+        .course-item.selected {
+            background-color: #e6f7ff;
+            border-left: 4px solid #007bff;
+        }
+        .controls-panel {
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+        .save-load-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .schedule-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .schedule-controls button, .save-load-section button {
+            padding: 0.5rem 1rem;
+            border-radius: 0.3rem;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .schedule-controls button.bg-blue-500, .save-load-section button.bg-blue-500 {
+            background-color: #007bff;
+            color: white;
+        }
+        .schedule-controls button.bg-blue-500:hover, .save-load-section button.bg-blue-500:hover {
+            background-color: #0056b3;
+        }
+        .schedule-controls button.bg-gray-300 {
+            background-color: #6c757d;
+            color: white;
+        }
+        .schedule-controls button.bg-gray-300:hover {
+            background-color: #5a6268;
+        }
+        .schedule-controls select {
+            padding: 0.5rem;
+            border-radius: 0.3rem;
+            border: 1px solid #ccc;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .schedule-grid {
+                grid-template-columns: 60px repeat(5, 1fr); /* Más pequeño para móviles */
+                grid-template-rows: auto repeat(14, 50px); /* Altura de celda más pequeña */
+            }
+            .schedule-header, .time-slot, .course-block {
+                font-size: 0.65rem; /* Fuente más pequeña */
+                padding: 0.3rem;
+            }
+            .time-slot {
+                padding-top: 3px;
+            }
+            .controls-panel, .course-list {
+                padding: 0.75rem;
+            }
+            .schedule-controls {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body class="p-4">
+    <div class="container mx-auto">
+        <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">Simulador de Horarios USM</h1>
+
+        <div class="controls-panel mb-6 shadow-md">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">Controles</h2>
+            <div class="flex flex-wrap items-center gap-4 mb-4">
+                <div class="flex-grow">
+                    <label for="search" class="block text-sm font-medium text-gray-700 mb-1">Buscar Asignatura:</label>
+                    <input type="text" id="search" placeholder="Buscar por sigla o nombre" class="w-full p-2 border border-gray-300 rounded-md">
+                </div>
+                <div>
+                    <label for="departmentFilter" class="block text-sm font-medium text-gray-700 mb-1">Departamento:</label>
+                    <select id="departmentFilter" class="w-full p-2 border border-gray-300 rounded-md">
+                        <option value="">Todos</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="professorFilter" class="block text-sm font-medium text-gray-700 mb-1">Profesor:</label>
+                    <select id="professorFilter" class="w-full p-2 border border-gray-300 rounded-md">
+                        <option value="">Todos</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="campusFilter" class="block text-sm font-medium text-gray-700 mb-1">Sede:</label>
+                    <select id="campusFilter" class="w-full p-2 border border-gray-300 rounded-md">
+                        <option value="">Todas</option>
+                        <option value="Stgo. Vit.">Santiago Vitacura</option>
+                        <option value="Valparaíso">Valparaíso</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="save-load-section">
+                <input type="text" id="scheduleNameInput" placeholder="Nombre del escenario" class="p-2 border border-gray-300 rounded-md flex-grow">
+                <button onclick="saveCurrentSchedule()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold">Guardar Horario</button>
+                <select id="scheduleSelector" class="p-2 border border-gray-300 rounded-md flex-grow"></select>
+                <button onclick="loadSelectedSchedule()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold">Cargar</button>
+                <button onclick="deleteSelectedSchedule()" class="bg-red-500 hover:bg-red-600 text-white font-bold">Eliminar</button>
+            </div>
+            <button onclick="clearSchedule()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold w-full mt-4">Limpiar Horario Actual</button>
+        </div>
+
+        <div class="flex flex-col lg:flex-row gap-6">
+            <div class="lg:w-1/3">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Cursos Disponibles</h2>
+                <div id="courseList" class="course-list shadow-md">
+                    <p class="text-gray-500">Cargando cursos...</p>
+                </div>
+            </div>
+
+            <div class="lg:w-2/3">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Tu Horario Semanal</h2>
+                <div id="scheduleGrid" class="schedule-grid shadow-md">
+                    <div class="schedule-header"></div>
+                    <div class="schedule-header">Lunes</div>
+                    <div class="schedule-header">Martes</div>
+                    <div class="schedule-header">Miércoles</div>
+                    <div class="schedule-header">Jueves</div>
+                    <div class="schedule-header">Viernes</div>
+
+                    <div class="time-slot" style="grid-row: 2;">08:15 - 08:55</div>
+                    <div class="time-slot" style="grid-row: 3;">08:55 - 09:35</div>
+                    <div class="time-slot" style="grid-row: 4;">09:40 - 10:20</div>
+                    <div class="time-slot" style="grid-row: 5;">10:20 - 10:50</div>
+                    <div class="time-slot" style="grid-row: 6;">11:00 - 11:40</div>
+                    <div class="time-slot" style="grid-row: 7;">11:40 - 12:20</div>
+                    <div class="time-slot" style="grid-row: 8;">12:30 - 13:10</div>
+                    <div class="time-slot" style="grid-row: 9;">13:10 - 13:40</div>
+                    <div class="time-slot" style="grid-row: 10;">14:40 - 15:20</div>
+                    <div class="time-slot" style="grid-row: 11;">15:20 - 15:50</div>
+                    <div class="time-slot" style="grid-row: 12;">16:00 - 16:40</div>
+                    <div class="time-slot" style="grid-row: 13;">16:40 - 17:20</div>
+                    <div class="time-slot" style="grid-row: 14;">17:30 - 18:10</div>
+                    <div class="time-slot" style="grid-row: 15;">18:10 - 18:40</div>
+
+                    </div>
+                <div class="text-right mt-4">
+                    <button onclick="downloadScheduleAsImage()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md shadow-md">
+                        Descargar Horario (PNG)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allCourses = [];
+        let currentSchedule = [];
+        let allSchedules = {}; // Stores all saved schedules {name: [course_ids]}
+        const scheduleGrid = document.getElementById('scheduleGrid');
+        const courseListDiv = document.getElementById('courseList');
+        const searchInput = document.getElementById('search');
+        const departmentFilter = document.getElementById('departmentFilter');
+        const professorFilter = document.getElementById('professorFilter');
+        const campusFilter = document.getElementById('campusFilter');
+        const scheduleSelector = document.getElementById('scheduleSelector');
+        const scheduleNameInput = document.getElementById('scheduleNameInput');
+
+        const blockTimes = {
+            1: { start: '08:15', end: '08:55' },
+            2: { start: '08:55', end: '09:35' },
+            3: { start: '09:40', end: '10:20' },
+            4: { start: '10:20', end: '10:50' },
+            5: { start: '11:00', end: '11:40' },
+            6: { start: '11:40', end: '12:20' },
+            7: { start: '12:30', end: '13:10' },
+            8: { start: '13:10', end: '13:40' },
+            9: { start: '14:40', end: '15:20' },
+            10: { start: '15:20', end: '15:50' },
+            11: { start: '16:00', end: '16:40' },
+            12: { start: '16:40', end: '17:20' },
+            13: { start: '17:30', end: '18:10' },
+            14: { start: '18:10', end: '18:40' }
+        };
+
+        const dayMap = {
+            "Lunes": 2,
+            "Martes": 3,
+            "Miércoles": 4,
+            "Jueves": 5,
+            "Viernes": 6
+        };
+
+        // Function to handle window resize for potential re-rendering or adjustments
+        function handleResize() {
+            renderSchedule(); // Re-render to adjust block positions/sizes if necessary
+        }
+
+        // --- Schedule Management Functions ---
+
+        function addCourseToSchedule(courseId) {
+            const courseToAdd = allCourses.find(c => c.id === courseId);
+            if (!courseToAdd) return;
+
+            // Check for conflicts
+            for (const newSchedule of courseToAdd.horarios) {
+                const newDay = newSchedule.dia;
+                const newStartBlock = newSchedule.bloque_inicio;
+                const newEndBlock = newSchedule.bloque_fin;
+
+                for (const existingCourseId of currentSchedule) {
+                    const existingCourse = allCourses.find(c => c.id === existingCourseId);
+                    if (!existingCourse) continue;
+
+                    for (const existingSchedule of existingCourse.horarios) {
+                        const existingDay = existingSchedule.dia;
+                        const existingStartBlock = existingSchedule.bloque_inicio;
+                        const existingEndBlock = existingSchedule.bloque_fin;
+
+                        if (newDay === existingDay) {
+                            // Check for block overlap
+                            if (Math.max(newStartBlock, existingStartBlock) <= Math.min(newEndBlock, existingEndBlock)) {
+                                alert(`Conflicto de horario: El curso ${courseToAdd.sigla} choca con ${existingCourse.sigla} el ${newDay} de ${blockTimes[newStartBlock].start} a ${blockTimes[newEndBlock].end}.`);
+                                return; // Don't add if there's a conflict
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If no conflicts, add the course
+            if (!currentSchedule.includes(courseId)) {
+                currentSchedule.push(courseId);
+                renderSchedule();
+                updateCourseListSelection();
+            }
+        }
+
+        function removeCourseFromSchedule(courseId) {
+            currentSchedule = currentSchedule.filter(id => id !== courseId);
+            renderSchedule();
+            updateCourseListSelection();
+        }
+
+        function clearSchedule() {
+            currentSchedule = [];
+            renderSchedule();
+            updateCourseListSelection();
+        }
+
+        function renderSchedule() {
+            // Clear previous blocks, keeping headers and time slots
+            const existingBlocks = scheduleGrid.querySelectorAll('.course-block');
+            existingBlocks.forEach(block => block.remove());
+
+            currentSchedule.forEach(courseId => {
+                const course = allCourses.find(c => c.id === courseId);
+                if (course) {
+                    course.horarios.forEach(schedule => {
+                        const dayColumn = dayMap[schedule.dia];
+                        if (dayColumn) {
+                            const startBlockRow = schedule.bloque_inicio + 1; // +1 because grid starts after headers
+                            const endBlockRow = schedule.bloque_fin + 1;
+
+                            const courseBlock = document.createElement('div');
+                            courseBlock.className = 'course-block';
+                            if (currentSchedule.includes(course.id)) {
+                                courseBlock.classList.add('selected');
+                            }
+                            courseBlock.style.gridColumn = dayColumn;
+                            courseBlock.style.gridRow = `${startBlockRow} / span ${endBlockRow - startBlockRow + 1}`;
+                            courseBlock.innerHTML = `
+                                <span class="course-name font-bold">${course.sigla}</span>
+                                <span class="course-professor">${course.profesor}</span>
+                                <span class="course-sala">${schedule.sala}</span>
+                            `;
+                            courseBlock.title = `${course.asignatura} - ${course.profesor} (${schedule.hora_inicio}-${schedule.hora_fin} ${schedule.dia} ${schedule.sala})`;
+                            courseBlock.onclick = () => removeCourseFromSchedule(course.id);
+                            scheduleGrid.appendChild(courseBlock);
+                        }
+                    });
+                }
+            });
+        }
+
+        // --- Course List Functions ---
+
+        function renderCourseList(coursesToRender) {
+            courseListDiv.innerHTML = ''; // Clear previous list
+            if (coursesToRender.length === 0) {
+                courseListDiv.innerHTML = '<p class="text-gray-500">No se encontraron cursos con los filtros aplicados.</p>';
+                return;
+            }
+
+            coursesToRender.forEach(course => {
+                const courseItem = document.createElement('div');
+                courseItem.className = 'course-item flex justify-between items-center';
+                if (currentSchedule.includes(course.id)) {
+                    courseItem.classList.add('selected');
+                }
+                courseItem.innerHTML = `
+                    <div>
+                        <p class="font-bold text-gray-800">${course.sigla} - ${course.asignatura} (${course.paralelo})</p>
+                        <p class="text-sm text-gray-600">${course.profesor} - ${course.departamento}</p>
+                        <p class="text-xs text-gray-500">Cupo: ${course.cupo}</p>
+                        ${course.horarios.map(h => `<p class="text-xs text-gray-500">${h.dia} ${h.hora_inicio}-${h.hora_fin} ${h.sala} (${h.sede})</p>`).join('')}
+                    </div>
+                    <button class="add-button bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1 rounded-md">
+                        ${currentSchedule.includes(course.id) ? 'Eliminar' : 'Agregar'}
+                    </button>
+                `;
+                courseItem.querySelector('.add-button').onclick = (event) => {
+                    event.stopPropagation(); // Prevent courseItem click from firing
+                    if (currentSchedule.includes(course.id)) {
+                        removeCourseFromSchedule(course.id);
+                    } else {
+                        addCourseToSchedule(course.id);
+                    }
+                };
+                courseItem.onclick = () => {
+                    // This could be used for more detailed view or direct add/remove if button isn't clicked
+                };
+                courseListDiv.appendChild(courseItem);
+            });
+        }
+
+        function updateCourseListSelection() {
+            const courseItems = courseListDiv.querySelectorAll('.course-item');
+            courseItems.forEach(item => {
+                const courseId = item.querySelector('.font-bold').textContent.split(' - ')[0] + '_' + item.querySelector('.font-bold').textContent.split('(')[1].replace(')', ''); // Extracting ID roughly
+                const addButton = item.querySelector('.add-button');
+                if (currentSchedule.includes(courseId)) {
+                    item.classList.add('selected');
+                    addButton.textContent = 'Eliminar';
+                    addButton.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+                    addButton.classList.add('bg-red-500', 'hover:bg-red-600');
+                } else {
+                    item.classList.remove('selected');
+                    addButton.textContent = 'Agregar';
+                    addButton.classList.remove('bg-red-500', 'hover:bg-red-600');
+                    addButton.classList.add('bg-blue-500', 'hover:bg-blue-600');
+                }
+            });
+            filterCourses(); // Re-apply filters to ensure correct display
+        }
+
+
+        function filterCourses() {
+            const searchTerm = searchInput.value.toLowerCase();
+            const selectedDepartment = departmentFilter.value;
+            const selectedProfessor = professorFilter.value;
+            const selectedCampus = campusFilter.value;
+
+            const filtered = allCourses.filter(course => {
+                const matchesSearch = course.sigla.toLowerCase().includes(searchTerm) ||
+                                      course.asignatura.toLowerCase().includes(searchTerm);
+                const matchesDepartment = selectedDepartment === "" || course.departamento === selectedDepartment;
+                const matchesProfessor = selectedProfessor === "" || course.profesor === selectedProfessor;
+                const matchesCampus = selectedCampus === "" || course.horarios.some(h => h.sede === selectedCampus);
+                return matchesSearch && matchesDepartment && matchesProfessor && matchesCampus;
+            });
+            renderCourseList(filtered);
+        }
+
+        function populateFilters() {
+            const departments = new Set(allCourses.map(course => course.departamento));
+            const professors = new Set(allCourses.map(course => course.profesor));
+
+            departments.forEach(dept => {
+                const option = document.createElement('option');
+                option.value = dept;
+                option.textContent = dept;
+                departmentFilter.appendChild(option);
+            });
+
+            professors.forEach(prof => {
+                const option = document.createElement('option');
+                option.value = prof;
+                option.textContent = prof;
+                professorFilter.appendChild(option);
+            });
+        }
+
+        // --- Save/Load Schedule Functions ---
+
+        function saveCurrentSchedule() {
+            const scheduleName = scheduleNameInput.value.trim();
+            if (scheduleName) {
+                allSchedules[scheduleName] = [...currentSchedule]; // Save a copy of the current schedule
+                localStorage.setItem('allSchedules', JSON.stringify(allSchedules));
+                updateScheduleSelector();
+                scheduleNameInput.value = ''; // Clear input
+                alert(`Horario "${scheduleName}" guardado.`);
+            } else {
+                alert('Por favor, ingresa un nombre para el horario.');
+            }
+        }
+
+        function loadSelectedSchedule() {
+            const selectedName = scheduleSelector.value;
+            if (selectedName && allSchedules[selectedName]) {
+                currentSchedule = [...allSchedules[selectedName]]; // Load the saved schedule
+                renderSchedule();
+                updateCourseListSelection();
+                alert(`Horario "${selectedName}" cargado.`);
+            } else {
+                alert('Por favor, selecciona un horario para cargar.');
+            }
+        }
+
+        function deleteSelectedSchedule() {
+            const selectedName = scheduleSelector.value;
+            if (selectedName && confirm(`¿Estás seguro de que quieres eliminar el horario "${selectedName}"?`)) {
+                delete allSchedules[selectedName];
+                localStorage.setItem('allSchedules', JSON.stringify(allSchedules));
+                updateScheduleSelector();
+                clearSchedule(); // Clear current view after deleting
+                alert(`Horario "${selectedName}" eliminado.`);
+            } else if (!selectedName) {
+                alert('Por favor, selecciona un horario para eliminar.');
+            }
+        }
+
+        function loadAllSchedulesFromLocalStorage() {
+            const savedSchedules = localStorage.getItem('allSchedules');
+            if (savedSchedules) {
+                allSchedules = JSON.parse(savedSchedules);
+            }
+        }
+
+        function updateScheduleSelector() {
+            scheduleSelector.innerHTML = '<option value="">Selecciona un horario</option>';
+            for (const name in allSchedules) {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                scheduleSelector.appendChild(option);
+            }
+        }
+
+        // --- Image Download Function ---
+        function downloadScheduleAsImage() {
+            const element = document.getElementById('scheduleGrid');
+            html2canvas(element, { scale: 2, logging: true, useCORS: true }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = 'horario_usm.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }).catch(error => {
+                console.error('Error al generar la imagen:', error);
+                alert('Hubo un error al descargar el horario como imagen. Por favor, inténtalo de nuevo.');
+            });
+        }
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            fetch('horarios_data.json')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    allCourses = data.map(course => ({
+                        id: course.id,
+                        sigla: course.sigla,
+                        asignatura: course.asignatura,
+                        departamento: course.departamento,
+                        paralelo: course.paralelo,
+                        profesor: course.profesor,
+                        cupo: course.cupo,
+                        horarios: course.horarios.map(h => ({
+                            dia: h.dia,
+                            bloque_inicio: h.bloque_inicio,
+                            bloque_fin: h.bloque_fin,
+                            hora_inicio: h.hora_inicio,
+                            hora_fin: h.hora_fin,
+                            tipo_sala: h.tipo_sala,
+                            sala: h.sala,
+                            sede: h.sede
+                        }))
+                    }));
+                    populateFilters();
+                    loadAllSchedulesFromLocalStorage(); // Load all scenarios
+                    updateScheduleSelector(); // Populate selector
+                    filterCourses(); // Filter and render course list
+                    renderSchedule(); // Render the current schedule
+                })
+                .catch(error => {
+                    console.error('Error al cargar los datos de los cursos:', error);
+                    document.getElementById('courseList').innerHTML = '<p class="text-red-500">Error al cargar los datos de los cursos. Asegúrate de que "horarios_data.json" esté en la misma carpeta.</p>';
+                });
+
+            // Add listeners for filters
+            searchInput.addEventListener('input', filterCourses);
+            departmentFilter.addEventListener('change', filterCourses);
+            professorFilter.addEventListener('change', filterCourses);
+            campusFilter.addEventListener('change', filterCourses);
+
+            // Add listener for the resize event
+            window.addEventListener('resize', handleResize);
+        });
+    </script>
+</body>
+</html>
